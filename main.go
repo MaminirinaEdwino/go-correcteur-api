@@ -6,7 +6,6 @@ import (
 	"fmt"
 	"net/http"
 	"os"
-	"strconv"
 	"strings"
 )
 
@@ -23,7 +22,39 @@ var dict Dictionnaire
 var bigrams ModelBigramme
 
 // --- LOGIQUE TALN ---
+// EntrainerDepuisTexte lit un texte brut et met à jour le dictionnaire et les bigrammes
+func EntrainerDepuisTexte(chemin string) error {
+    file, err := os.Open(chemin)
+    if err != nil {
+        return err
+    }
+    defer file.Close()
 
+    scanner := bufio.NewScanner(file)
+    var motPrecedent string
+
+    for scanner.Scan() {
+        ligne := strings.ToLower(scanner.Text())
+        // Nettoyage simple de la ponctuation
+        ligne = strings.NewReplacer(",", "", ".", "", "!", "", "?", "").Replace(ligne)
+        mots := strings.Fields(ligne)
+
+        for _, mot := range mots {
+            // Mise à jour Unigramme (fréquence du mot seul)
+            dict[mot]++
+
+            // Mise à jour Bigramme (fréquence de la suite de mots)
+            if motPrecedent != "" {
+                if bigrams[motPrecedent] == nil {
+                    bigrams[motPrecedent] = make(map[string]int)
+                }
+                bigrams[motPrecedent][mot]++
+            }
+            motPrecedent = mot
+        }
+    }
+    return nil
+}
 // Algorithme de Levenshtein pour mesurer la similarité entre deux mots
 func Levenshtein(s1, s2 string) int {
 	d := make([][]int, len(s1)+1)
@@ -112,32 +143,39 @@ func handleCorrection(w http.ResponseWriter, r *http.Request) {
 // --- INITIALISATION ---
 
 func init() {
+	// dict = make(Dictionnaire)
+	// bigrams = make(ModelBigramme)
+
+	// // Chargement Unigrammes
+	// f, _ := os.Open("dictionnaire.txt")
+	// s := bufio.NewScanner(f)
+	// for s.Scan() {
+	// 	p := strings.Fields(s.Text())
+	// 	if len(p) == 2 {
+	// 		freq, _ := strconv.Atoi(p[1])
+	// 		dict[p[0]] = freq
+	// 	}
+	// }
+
+	// // Chargement Bigrammes
+	// f2, _ := os.Open("bigrammes.txt")
+	// s2 := bufio.NewScanner(f2)
+	// for s2.Scan() {
+	// 	p := strings.Fields(s2.Text())
+	// 	if len(p) == 3 {
+	// 		if bigrams[p[0]] == nil { bigrams[p[0]] = make(map[string]int) }
+	// 		freq, _ := strconv.Atoi(p[2])
+	// 		bigrams[p[0]][p[1]] = freq
+	// 	}
+	// }
+	// fmt.Println("✅ Modèles TALN chargés en mémoire.")
+
 	dict = make(Dictionnaire)
-	bigrams = make(ModelBigramme)
+    bigrams = make(ModelBigramme)
 
-	// Chargement Unigrammes
-	f, _ := os.Open("dictionnaire.txt")
-	s := bufio.NewScanner(f)
-	for s.Scan() {
-		p := strings.Fields(s.Text())
-		if len(p) == 2 {
-			freq, _ := strconv.Atoi(p[1])
-			dict[p[0]] = freq
-		}
-	}
-
-	// Chargement Bigrammes
-	f2, _ := os.Open("bigrammes.txt")
-	s2 := bufio.NewScanner(f2)
-	for s2.Scan() {
-		p := strings.Fields(s2.Text())
-		if len(p) == 3 {
-			if bigrams[p[0]] == nil { bigrams[p[0]] = make(map[string]int) }
-			freq, _ := strconv.Atoi(p[2])
-			bigrams[p[0]][p[1]] = freq
-		}
-	}
-	fmt.Println("✅ Modèles TALN chargés en mémoire.")
+    fmt.Println("⏳ Entraînement en cours...")
+    EntrainerDepuisTexte("dico.txt")
+    fmt.Printf("✅ Terminé ! %d mots uniques appris.\n", len(dict))
 }
 
 func main() {
