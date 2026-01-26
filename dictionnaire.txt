@@ -1,0 +1,7 @@
+je 100000
+ils 90000
+mange 50000
+mangent 45000
+la 80000
+pomme 30000
+voyage 20000
