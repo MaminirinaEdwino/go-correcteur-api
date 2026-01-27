@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"net/http"
 	"os"
+	"regexp"
 	"strings"
 )
 
@@ -21,6 +22,44 @@ type CorrectionResponse struct {
 var dict Dictionnaire
 var bigrams ModelBigramme
 
+func Tokenize(texte string) []string {
+	// 1. Mise en minuscule
+	texte = strings.ToLower(texte)
+
+	// 2. Remplacer les apostrophes courbes par des apostrophes simples
+	texte = strings.ReplaceAll(texte, "’", "'")
+
+	// 3. Regex pour séparer la ponctuation et les élisions
+	// Cette regex capture :
+	// - Les mots avec apostrophes (l', d', etc.)
+	// - Les mots avec tirets (peut-être)
+	// - Les mots simples
+	// - La ponctuation isolée
+	re := regexp.MustCompile(`[a-zàâçéèêëîïôûùœæ']+(?:-[a-zàâçéèêëîïôûùœæ']+)*|[[:punct:]]`)
+	
+	return re.FindAllString(texte, -1)
+}
+
+func TokenizePro(texte string) []string {
+	texte = strings.ToLower(texte)
+
+	// 1. Définition des patterns
+	// Pattern pour Emails
+	const emailPattern = `[a-z0-9._%+-]+@[a-z0-9.-]+\.[a-z]{2,}`
+	// Pattern pour URLs (http, https, www)
+	const urlPattern = `(?:https?://|www\.)[^\s/$.?#].[^\s]*`
+	// Pattern pour Mots (incluant apostrophes et tirets)
+	const wordPattern = `[a-zàâçéèêëîïôûùœæ']+(?:-[a-zàâçéèêëîïôûùœæ']+)*`
+	// Pattern pour Ponctuation
+	const punctPattern = `[[:punct:]]`
+
+	// On combine tout : le "|" signifie "OU"
+	// L'ordre est crucial : on cherche d'abord les URLs, puis Emails, puis Mots
+	fullRegex := fmt.Sprintf(`(%s)|(%s)|(%s)|(%s)`, urlPattern, emailPattern, wordPattern, punctPattern)
+	re := regexp.MustCompile(fullRegex)
+
+	return re.FindAllString(texte, -1)
+}
 // --- LOGIQUE TALN ---
 // EntrainerDepuisTexte lit un texte brut et met à jour le dictionnaire et les bigrammes
 func EntrainerDepuisTexte(chemin string) error {
@@ -37,7 +76,8 @@ func EntrainerDepuisTexte(chemin string) error {
         ligne := strings.ToLower(scanner.Text())
         // Nettoyage simple de la ponctuation
         ligne = strings.NewReplacer(",", "", ".", "", "!", "", "?", "").Replace(ligne)
-        mots := strings.Fields(ligne)
+        // mots := strings.Fields(ligne)
+		mots := TokenizePro(ligne)
 
         for _, mot := range mots {
             // Mise à jour Unigramme (fréquence du mot seul)
