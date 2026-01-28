@@ -32,10 +32,9 @@ func SauvegarderModele(nomFichier string) {
 	defer file.Close()
 
 	encoder := gob.NewEncoder(file)
-	// On stocke dict et bigrams dans une structure ou séparement
 	encoder.Encode(dict)
 	encoder.Encode(bigrams)
-	fmt.Println("💾 Modèle sauvegardé avec succès.")
+	fmt.Println("Modèle sauvegardé avec succès.")
 }
 
 func ChargerModele(nomFichier string) bool {
@@ -49,7 +48,7 @@ func ChargerModele(nomFichier string) bool {
 	decoder.Decode(&dict)
 	decoder.Decode(&bigrams)
 
-	fmt.Println("⚡ Modèle chargé depuis le disque.")
+	fmt.Println("Modèle chargé depuis le disque.")
 	return true
 }
 func GenererDeletions(mot string, distanceMax int) []string {
@@ -74,17 +73,11 @@ func TokenizePro(texte string) []string {
 	const wordPattern = `[a-zàâçéèêëîïôûùœæ']+(?:-[a-zàâçéèêëîïôûùœæ']+)*`
 	// Pattern pour Ponctuation
 	const punctPattern = `[[:punct:]]`
-
-	// On combine tout : le "|" signifie "OU"
-	// L'ordre est crucial : on cherche d'abord les URLs, puis Emails, puis Mots
 	fullRegex := fmt.Sprintf(`(%s)|(%s)|(%s)|(%s)`, urlPattern, emailPattern, wordPattern, punctPattern)
 	re := regexp.MustCompile(fullRegex)
 
 	return re.FindAllString(texte, -1)
 }
-
-// --- LOGIQUE TALN ---
-// EntrainerDepuisTexte lit un texte brut et met à jour le dictionnaire et les bigrammes
 func EntrainerDepuisTexte(chemin string) error {
 	file, err := os.Open(chemin)
 	if err != nil {
@@ -97,16 +90,11 @@ func EntrainerDepuisTexte(chemin string) error {
 
 	for scanner.Scan() {
 		ligne := strings.ToLower(scanner.Text())
-		// Nettoyage simple de la ponctuation
 		ligne = strings.NewReplacer(",", "", ".", "", "!", "", "?", "").Replace(ligne)
-		// mots := strings.Fields(ligne)
 		mots := TokenizePro(ligne)
 
 		for _, mot := range mots {
-			// Mise à jour Unigramme (fréquence du mot seul)
 			dict[mot]++
-
-			// Mise à jour Bigramme (fréquence de la suite de mots)
 			if motPrecedent != "" {
 				if bigrams[motPrecedent] == nil {
 					bigrams[motPrecedent] = make(map[string]int)
@@ -119,7 +107,6 @@ func EntrainerDepuisTexte(chemin string) error {
 	return nil
 }
 
-// Algorithme de Levenshtein pour mesurer la similarité entre deux mots
 func Levenshtein(s1, s2 string) int {
 	d := make([][]int, len(s1)+1)
 	for i := range d {
@@ -154,7 +141,6 @@ func min(a, b, c int) int {
 	return c
 }
 
-// Fonction principale de correction d'une phrase
 func CorrigerPhrase(input string) string {
 	mots := strings.Fields(strings.ToLower(input))
 	resultat := make([]string, len(mots))
@@ -165,16 +151,12 @@ func CorrigerPhrase(input string) string {
 			resultat[i] = mot
 			continue
 		}
-
-		// 2. Recherche de candidats proches (Distance <= 2)
 		candidats := []string{}
 		for k := range dict {
 			if Levenshtein(mot, k) <= 2 {
 				candidats = append(candidats, k)
 			}
 		}
-		// candidats = RechercherCandidats(mot)
-		// 3. Choix du meilleur candidat par contexte (Bigrammes) ou fréquence
 		meilleurCandidat := mot
 		maxScore := -1
 
@@ -199,10 +181,8 @@ func CorrigerPhrase(input string) string {
 	return strings.Join(resultat, " ")
 }
 
-// --- SERVEUR API ---
 
 func handleCorrection(w http.ResponseWriter, r *http.Request) {
-	// Autoriser les requêtes depuis Angular (CORS)
 	w.Header().Set("Access-Control-Allow-Origin", "*")
 	w.Header().Set("Content-Type", "application/json")
 
@@ -224,8 +204,6 @@ func init() {
 
 	if !ChargerModele("modele_taln.gob") {
 		fmt.Println("Aucun modèle trouvé. Lancement de l'entraînement initial...")
-
-		// 2. Entraîner sur ton dossier de données
 		dataContent, err := os.ReadDir("data")
 		if err != nil {
 			panic(err)
@@ -234,11 +212,8 @@ func init() {
 		for _, filename := range dataContent {
 			EntrainerDepuisTexte("data/" + filename.Name())
 		}
-
-		// 3. Sauvegarder pour la prochaine fois
 		SauvegarderModele("modele_taln.gob")
 	}
-	// EntrainerDepuisTexte("dico.txt")
 	fmt.Printf("Terminé ! %d mots uniques appris.\n", len(dict))
 }
 
