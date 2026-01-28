@@ -11,7 +11,6 @@ import (
 	"strings"
 )
 
-// Structures pour le modèle TALN
 type ModelBigramme map[string]map[string]int
 type Dictionnaire map[string]int
 
@@ -19,12 +18,10 @@ type CorrectionResponse struct {
 	Original string `json:"original"`
 	Corrige  string `json:"corrige"`
 }
-type IndexSymSpell map[string][]string
 
 var dict Dictionnaire
 var bigrams ModelBigramme
 
-var index = make(IndexSymSpell)
 
 func SauvegarderModele(nomFichier string) {
 	file, err := os.Create(nomFichier)
@@ -41,11 +38,10 @@ func SauvegarderModele(nomFichier string) {
 	fmt.Println("💾 Modèle sauvegardé avec succès.")
 }
 
-// Charger le modèle depuis le disque au démarrage
 func ChargerModele(nomFichier string) bool {
 	file, err := os.Open(nomFichier)
 	if err != nil {
-		return false // Le fichier n'existe pas encore
+		return false 
 	}
 	defer file.Close()
 
@@ -53,16 +49,11 @@ func ChargerModele(nomFichier string) bool {
 	decoder.Decode(&dict)
 	decoder.Decode(&bigrams)
 
-	// Re-générer l'index SymSpell à partir du dict chargé
-	// for mot := range dict {
-	// 	indexerMot(mot)
-	// }
 	fmt.Println("⚡ Modèle chargé depuis le disque.")
 	return true
 }
 func GenererDeletions(mot string, distanceMax int) []string {
 	res := []string{mot}
-	// Logique simplifiée pour 1 suppression
 	for i := 0; i < len(mot); i++ {
 		del := mot[:i] + mot[i+1:]
 		res = append(res, del)
@@ -70,45 +61,6 @@ func GenererDeletions(mot string, distanceMax int) []string {
 	return res
 }
 
-// InitialiserIndex remplit l'index ultra-rapide
-func InitialiserIndex() {
-	for mot := range dict {
-		deletions := GenererDeletions(mot, 1)
-		for _, d := range deletions {
-			index[d] = append(index[d], mot)
-		}
-	}
-}
-
-func RechercherCandidats(input string) []string {
-	// On cherche directement dans la map (O(1) au lieu de O(N))
-	candidats := GenererDeletions(input, 1)
-	suggestions := []string{}
-
-	for _, c := range candidats {
-		if val, existe := index[c]; existe {
-			suggestions = append(suggestions, val...)
-		}
-	}
-	return suggestions
-}
-func Tokenize(texte string) []string {
-	// 1. Mise en minuscule
-	texte = strings.ToLower(texte)
-
-	// 2. Remplacer les apostrophes courbes par des apostrophes simples
-	texte = strings.ReplaceAll(texte, "’", "'")
-
-	// 3. Regex pour séparer la ponctuation et les élisions
-	// Cette regex capture :
-	// - Les mots avec apostrophes (l', d', etc.)
-	// - Les mots avec tirets (peut-être)
-	// - Les mots simples
-	// - La ponctuation isolée
-	re := regexp.MustCompile(`[a-zàâçéèêëîïôûùœæ']+(?:-[a-zàâçéèêëîïôûùœæ']+)*|[[:punct:]]`)
-
-	return re.FindAllString(texte, -1)
-}
 
 func TokenizePro(texte string) []string {
 	texte = strings.ToLower(texte)
@@ -264,48 +216,21 @@ func handleCorrection(w http.ResponseWriter, r *http.Request) {
 	json.NewEncoder(w).Encode(CorrectionResponse{Original: text, Corrige: corrige})
 }
 
-// --- INITIALISATION ---
+
 
 func init() {
-	// dict = make(Dictionnaire)
-	// bigrams = make(ModelBigramme)
-
-	// // Chargement Unigrammes
-	// f, _ := os.Open("dictionnaire.txt")
-	// s := bufio.NewScanner(f)
-	// for s.Scan() {
-	// 	p := strings.Fields(s.Text())
-	// 	if len(p) == 2 {
-	// 		freq, _ := strconv.Atoi(p[1])
-	// 		dict[p[0]] = freq
-	// 	}
-	// }
-
-	// // Chargement Bigrammes
-	// f2, _ := os.Open("bigrammes.txt")
-	// s2 := bufio.NewScanner(f2)
-	// for s2.Scan() {
-	// 	p := strings.Fields(s2.Text())
-	// 	if len(p) == 3 {
-	// 		if bigrams[p[0]] == nil { bigrams[p[0]] = make(map[string]int) }
-	// 		freq, _ := strconv.Atoi(p[2])
-	// 		bigrams[p[0]][p[1]] = freq
-	// 	}
-	// }
-	// fmt.Println("✅ Modèles TALN chargés en mémoire.")
-	InitialiserIndex()
 	dict = make(Dictionnaire)
 	bigrams = make(ModelBigramme)
 
 	if !ChargerModele("modele_taln.gob") {
-		fmt.Println("⚠️ Aucun modèle trouvé. Lancement de l'entraînement initial...")
+		fmt.Println("Aucun modèle trouvé. Lancement de l'entraînement initial...")
 
 		// 2. Entraîner sur ton dossier de données
 		dataContent, err := os.ReadDir("data")
 		if err != nil {
 			panic(err)
 		}
-		fmt.Println("⏳ Entraînement en cours...")
+		fmt.Println("Entraînement en cours...")
 		for _, filename := range dataContent {
 			EntrainerDepuisTexte("data/" + filename.Name())
 		}
@@ -314,11 +239,11 @@ func init() {
 		SauvegarderModele("modele_taln.gob")
 	}
 	// EntrainerDepuisTexte("dico.txt")
-	fmt.Printf("✅ Terminé ! %d mots uniques appris.\n", len(dict))
+	fmt.Printf("Terminé ! %d mots uniques appris.\n", len(dict))
 }
 
 func main() {
 	http.HandleFunc("/correct", handleCorrection)
-	fmt.Println("🚀 API démarrée sur http://localhost:8080/correct")
+	fmt.Println("API démarrée sur http://localhost:8080/correct")
 	http.ListenAndServe(":8080", nil)
 }
