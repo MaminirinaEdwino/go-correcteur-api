@@ -19,9 +19,13 @@ type CorrectionResponse struct {
 	Corrige  string `json:"corrige"`
 }
 
+
 var dict Dictionnaire
 var bigrams ModelBigramme
-
+var (
+	symIndex  = make(map[string][]string) // L'index SymSpell
+	regexPro  *regexp.Regexp
+)
 
 func SauvegarderModele(nomFichier string) {
 	file, err := os.Create(nomFichier)
@@ -141,7 +145,84 @@ func min(a, b, c int) int {
 	return c
 }
 
+func initTokenizer() {
+	const (
+		urlPattern   = `(?:https?://|www\.)[^\s/$.?#].[^\s]*`
+		emailPattern = `[a-z0-9._%+-]+@[a-z0-9.-]+\.[a-z]{2,}`
+		wordPattern  = `[a-zàâçéèêëîïôûùœæ']+(?:-[a-zàâçéèêëîïôûùœæ']+)*`
+		punctPattern = `[[:punct:]]`
+	)
+	fullRegex := fmt.Sprintf(`(%s)|(%s)|(%s)|(%s)`, urlPattern, emailPattern, wordPattern, punctPattern)
+	regexPro = regexp.MustCompile(fullRegex)
+}
+
+func Tokenize(texte string) []string {
+	return regexPro.FindAllString(strings.ToLower(texte), -1)
+}
+
+// --- 2. OPTIMISATION SYMSPELL ---
+func genererDeletions(mot string) []string {
+	res := []string{mot}
+	if len(mot) <= 1 { return res }
+	for i := 0; i < len(mot); i++ {
+		res = append(res, mot[:i]+mot[i+1:])
+	}
+	return res
+}
+
+func indexerMot(mot string) {
+	for _, del := range genererDeletions(mot) {
+		symIndex[del] = append(symIndex[del], mot)
+	}
+}
+
 func CorrigerPhrase(input string) string {
+	tokens := Tokenize(input)
+	resultat := make([]string, len(tokens))
+
+	for i, token := range tokens {
+		// Si c'est une URL, un email ou de la ponctuation, on ne touche pas
+		if strings.Contains(token, "@") || strings.Contains(token, "http") || len(token) == 1 {
+			resultat[i] = token
+			continue
+		}
+
+		// Si le mot est dans le dictionnaire, il est correct
+		if _, existe := dict[token]; existe {
+			resultat[i] = token
+			continue
+		}
+
+		// Sinon, recherche ultra-rapide via SymSpell
+		candidatsMap := make(map[string]bool)
+		for _, del := range genererDeletions(token) {
+			if matches, ok := symIndex[del]; ok {
+				for _, m := range matches { candidatsMap[m] = true }
+			}
+		}
+
+		// Choix du meilleur candidat (Fréquence + Contexte)
+		meilleurCandidat := token
+		maxScore := -1
+
+		for c := range candidatsMap {
+			score := dict[c]
+			if i > 0 {
+				if s, ok := bigrams[resultat[i-1]][c]; ok {
+					score += s * 1000 // Boost contextuel
+				}
+			}
+			if score > maxScore {
+				maxScore = score
+				meilleurCandidat = c
+			}
+		}
+		resultat[i] = meilleurCandidat
+	}
+	return strings.Join(resultat, " ")
+}
+
+func CorrigerPhrase1(input string) string {
 	mots := strings.Fields(strings.ToLower(input))
 	resultat := make([]string, len(mots))
 
@@ -204,15 +285,22 @@ func init() {
 
 	if !ChargerModele("modele_taln.gob") {
 		fmt.Println("Aucun modèle trouvé. Lancement de l'entraînement initial...")
-		dataContent, err := os.ReadDir("data")
+		dataContent, err := os.ReadDir("res")
 		if err != nil {
 			panic(err)
 		}
 		fmt.Println("Entraînement en cours...")
-		for _, filename := range dataContent {
+		fmt.Println("Nombre de fichier texte : ", len(dataContent))
+		for i, filename := range dataContent {
+			fmt.Println(i, "/", len(dataContent))
 			EntrainerDepuisTexte("data/" + filename.Name())
 		}
 		SauvegarderModele("modele_taln.gob")
+	}
+	initTokenizer()
+
+	for m := range dict {
+		indexerMot(m)
 	}
 	fmt.Printf("Terminé ! %d mots uniques appris.\n", len(dict))
 }
